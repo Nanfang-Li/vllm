@@ -7,15 +7,36 @@ Covers the fix for num_frames-based timestamp calculation
 """
 
 from typing import Any
+from unittest.mock import Mock, sentinel
 
 import numpy as np
 import pytest
+from transformers.feature_extraction_utils import BatchFeature
 
+from vllm.model_executor.models.qwen3_vl import Qwen3VLMultiModalProcessor
 from vllm.multimodal import MULTIMODAL_REGISTRY
 
 from ...utils import build_model_context
 
 MODEL_ID = "Qwen/Qwen3-VL-4B-Instruct"
+
+
+def test_hf_processor_disables_dummy_prompt_truncation() -> None:
+    processor = object.__new__(Qwen3VLMultiModalProcessor)
+    processor.info = Mock()
+    processor.info.get_hf_processor.return_value = sentinel.hf_processor
+    processor.info.ctx.call_hf_processor.return_value = BatchFeature(
+        {"input_ids": [[1]]}
+    )
+
+    processor._call_hf_processor(
+        "<|vision_start|><|image_pad|><|vision_end|>",
+        {"images": [sentinel.image]},
+        {"max_pixels": 4096 * 4096},
+    )
+
+    _, _, call_kwargs = processor.info.ctx.call_hf_processor.call_args.args
+    assert call_kwargs == {"max_pixels": 4096 * 4096, "truncation": False}
 
 
 def _build_video_mm_data(
